@@ -1,0 +1,217 @@
+# **Wczytanie macierzy odległości - preparation**
+"""
+
+import random
+
+def calculate_distance_matrix(file_name):
+  lines = open(r"...").readlines()
+  num_of_cities = int(lines[0].strip()) # w tej linii jest podana liczba miast
+  matrix = [[0 for _ in range(num_of_cities)] for _ in range(num_of_cities)] # tworzymy listę zagnieżdżoną; _ jest zmienną, której pętla zawiera wartości od 0 do n-1 (dla matrix od 0 do num_of_cities-1) 
+
+  i_line = 0
+  for line in lines[1:]: # w początkowej (0) linii jest liczba miast, dlatego zaczynamy od kolejnej 
+      row = list(map(int, line.split())) # przechodzimy w linii po każdym elemencie, który jest zrzutowany na int
+      for i in range(len(row)): # len() - funkcja, ktora zwraca liczbę elementów w liscie; in range - zwraca listę zawierającą liczby całkowite od 0 do row-1
+        matrix[i_line][i] = row[i]
+        matrix[i][i_line] = row[i]
+      i_line += 1
+  return matrix
+
+"""# **Wyświetlanie - display**"""
+
+def print_matrix(matrix): # wyświetlanie macierzy odległości
+  print("\nMacierz:")
+  for row in matrix:
+    print("  ".join(map(str,row))) # join() - metoda służąca do łączenia kolejnych elementów listy (przeciwieństwo split)
+
+def print_population(population): # wyświetlanie populacji
+  print("\nPopulacja:")
+  for ind in population:
+    print("-".join(map(str,ind[0])),ind[1])
+  print("\n")
+
+def print_statistics(population): # wyświetlanie najlepszego osobnika i średniej długości trasy
+  print("Najlepszy:\t", best_solution(population))
+  print("Średnia:\t", avg_solutions(population))
+
+def print_selection_population(new_pop): # wyświetlenie populacji tymczasowej powstałej dzięki selekcji turniejowej przeprowadzonej na populacji bazowej (początkowej)
+  print("\nPopulacja po selekcji:")  
+  for sel_ind in new_pop:
+    print("-".join(map(str,sel_ind[0])),sel_ind[1])
+
+def print_crossover(new_population): # wyświetlenie populacji po krzyżowaniu
+  print("\nPopulacja po krzyżowaniu:")  
+  for ind in new_population:
+    print("-".join(map(str,ind[0])),ind[1])
+
+"""# **Tworzenie populacji - krok 1**"""
+
+def new_individual(n): # tworzenie pojedynczego osobnika (trasy o losowej kolejności miast); n - miast
+  individual = [i for i in range(n)]
+  random.shuffle(individual) # metoda shuffle() służy do mieszania danych; dane zostają zamienione miejscami
+  return individual
+
+def initialize_population(m,n): # tworzenie zbioru osobników; m - osobników, n - miast (długość osobnika)
+  return [[new_individual(n), -1] for _ in range(m)]
+
+"""# **Ocena - krok 2**"""
+
+def calculate_fitness (individual, d_matrix): # funkcja oceny dla pojedynczego osobnika (długość pojedynczej trasy)
+  sum_dist = 0
+  ind = individual[0] # trasa jest zapisana w individual[0], a w individual[1] jest zapisana ocena
+  for i in range(len(ind)-1): # idziemy przez indeksy osobnika, bez ostatniego
+    sum_dist += d_matrix[ind[i]][ind[i+1]] # dodawanie odległości między miastami
+  
+  sum_dist += d_matrix[ind[-1]][ind[0]] # aby wznaczyć trasę całkowitą, należy do trasy wyliczonej w pętli for dodać odległość między ostatnim miastem, a miastem startowym
+  individual[1] = sum_dist 
+
+def evaluate_population (population, distance_matrix): # funkcja oceny dla zbioru osobników (populacji)
+  for individual in population:
+    calculate_fitness(individual, distance_matrix)
+
+"""# **Statystyki**"""
+
+def best_solution(population): # zwraca najlepszego osobnika
+  return min(population,key = lambda ind: ind[1]) # zwróć element min, używając ind[1] jako klucza (zwróć element w tej "tablicy", którego drugi element (ind[1]) jest mniejszy niż wszystkie drugie elementy pozostałych elementów)
+
+def avg_solutions(population): # zwraca średnią ocenę z populacji
+  return sum([ind[1] for ind in population])/len(population)
+
+"""# **Operacje genetyczne - krok 3**
+
+# **Selekcja - krok 3a**
+"""
+
+def select_individual(population, k):
+  rand_index = random.randint(0,len(population)-1) # random.randint() zwraca losową liczbę całkowitą z zakresu [0,len(population)-1]
+  min_individual = population[rand_index] # losujemy jednego osobnika
+
+  for _ in range(k-1): # losujemy o 1 mniej, bo już jeden osobnik jest wylosowany
+      rand_index = random.randint(0,len(population)-1)
+     
+      if min_individual[1] > population[rand_index][1]:
+        min_individual = population[rand_index]
+
+  return min_individual
+
+def selection_tournament(population, k):
+  new_pop = [] # musimy stworzyć nową populację
+
+  for _ in range(len(population)):
+    sel_ind = select_individual(population, k)
+    copy_sel_ind = [sel_ind[0][:],sel_ind[1]] # osobnik, to lista, gdzie [0], to trasa i ją kopiujemy [:], a [1], to ocena
+    new_pop.append(copy_sel_ind) 
+
+  return new_pop
+
+"""# **Krzyżowanie - krok 3b**"""
+
+def gene_swap(parent, child, second_child, start, end, cp_1, cp_2):
+  for i in range(start,end): 
+    parent_gene = parent[i] 
+
+    while parent_gene in child[cp_1:cp_2]:
+      index = child.index(parent_gene)
+      parent_gene = second_child[index]
+    child[i] = parent_gene
+
+def crossover_PMX(population, probability):
+  new_population = []
+  for i in range(0,len(population),2): # idziemy parami, więc co 2
+    parent_1 = population[i][0] # [0], bo bierzemy tylko geny
+    parent_2 = population[i+1][0] # [0], bo bierzemy tylko geny
+
+    if random.random()<probability: # random.random() zwraca losową liczbę z zakresu [0,1)
+      # cp - cutting point
+      cp_1 = random.randint(1,len(parent_1)-3)
+      cp_2 = random.randint(cp_1+1,len(parent_1)-1)
+
+      child_1 = [None for _ in range(len(parent_1))] # każdy gen potomka ustawiamy na None, tyle genów ile ma rodzic
+      child_2 = child_1[:] # i kopiujemy do drugiego potomka
+      
+      # przepisujemy środki
+      child_1[cp_1:cp_2] = parent_2[cp_1:cp_2]
+      child_2[cp_1:cp_2] = parent_1[cp_1:cp_2]
+  
+      gene_swap(parent_1, child_1, child_2, 0, cp_1, cp_1, cp_2) # prefix (początek osobnika 1 do pierwszego punktu przecięcia cp_1)
+      gene_swap(parent_1, child_1, child_2, cp_2, len(parent_1), cp_1, cp_2) # postfix od 2 punktu przecięcia do końca osobnika 1
+      gene_swap(parent_2, child_2, child_1, 0, cp_1, cp_1, cp_2) # prefix (początek osobnika 2 do pierwszego punktu przecięcia cp_1)
+      gene_swap(parent_2, child_2, child_1, cp_2, len(parent_1), cp_1, cp_2) # postfix od 2 punktu przecięcia do końca osobnika 2
+
+      new_population.append([child_1, -1])
+      new_population.append([child_2, -1])
+
+    else: # jeśli nie, to dodajemy ich do nowej populacji bez zmiany (pamiętając o ocenie)
+      new_population.append([parent_1,-1])
+      new_population.append([parent_2,-1])
+
+  return new_population
+
+"""# **Mutacje - krok 3c**
+
+Mutacja przez inwersję
+"""
+
+def mutation_inversion(population, probability): # mutacja przez inwersję
+  for individual in population:
+    if random.random()<probability: 
+      gene = individual[0]
+      cutting_point_1 = random.randint(0,len(gene)-1) # losujemy pierwszy punkt cięcia
+      cutting_point_2 = random.randint(cutting_point_1+1,len(gene)) # losujemy drugi punkt cięcia
+      gene[cutting_point_1:cutting_point_2] = gene[cutting_point_1:cutting_point_2][::-1]
+
+"""Mutacja przez zamianę"""
+
+def mutation_replacement(population, probability): # mutacja przez zamianę
+  for individual in population:
+    if random.random()<probability: 
+      gene = individual[0]
+      index1 = random.randint(0,len(gene)-1)
+      index2 = random.randint(0,len(gene)-1)
+      tmp  =  gene[index1]
+      gene[index1], gene[index2] = gene[index2], gene[index1]
+
+"""# **Wykonanie programu - input**
+
+Parametry do programu
+"""
+
+num_of_ind = 100 # liczba osobników w problemie
+num_of_iterations = 1000000 # liczba interacji (generacji)
+k = 3  # nacisk selektywny w selekcji turniejowej
+p_c = 0.85 # prawdopodbieństwo krzyżowania
+p_mi = 0.005 # prawdopodobieństwo mutacji przez inwersję
+p_mr = 0.005 # prawdopodobieństwo mutacji przez zamianę
+
+"""Wywołanie funkcji"""
+
+matrix = calculate_distance_matrix(r"...")
+num_of_cities = len(matrix) # liczba "miast" w problemie
+
+population = initialize_population(num_of_ind, num_of_cities) 
+
+evaluate_population(population, matrix)
+
+print_statistics(population)
+
+the_best_solution = best_solution(population)
+print(the_best_solution[1])
+
+for _ in range(num_of_iterations):
+
+# selekcja turniejowa
+  population = selection_tournament(population, k) 
+# krzyżowanie PMX
+  population = crossover_PMX(population, p_c) 
+# mutacja przez inwersję
+  mutation_inversion(population, p_mi) 
+# mutacja przez zamianę 
+  mutation_replacement(population, p_mr) 
+# ponowna ocena
+  evaluate_population(population, matrix)
+
+  local_best_solution = best_solution(population)
+  if the_best_solution[1] > local_best_solution[1]:
+    the_best_solution = local_best_solution
+  if _ %1000 == 0: 
+    print(the_best_solution[1])
